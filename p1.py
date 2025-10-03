@@ -20,7 +20,7 @@ st.set_page_config(
 @st.cache_data
 def load_data():
     # Load data from your specific file path
-    file_path = "/Users/wjun/Desktop/textbook/AN6100/project/data_universities.xlsx"
+    file_path = "data_universities.xlsx"
     
     try:
         # Read the Excel file
