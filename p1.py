@@ -7,7 +7,7 @@ from plotly.subplots import make_subplots
 import matplotlib.pyplot as plt
 import seaborn as sns
 from datetime import datetime
-
+import re ##新的
 # Page configuration
 st.set_page_config(
     page_title="Singapore University Graduate Employment Analysis",
@@ -56,6 +56,41 @@ df = load_data()
 if df.empty:
     st.error("No data loaded. Please check the file path and format.")
     st.stop()
+#############################################################################
+# === new: 五大类映射与工具函数 ===
+five_groups = ["Business", "Engineering", "Arts & Social Sciences", "Science", "Law"]
+
+patterns = [
+    (r'\blaw\b|\bjd\b', 'Law'),
+    (r'\bengineer\w*\b|\binformation systems\b|\bcomput\w*\b', 'Engineering'),
+    (r'\bbusiness\b|\baccountancy\b|\bfinance\b|\bmarketing\b', 'Business'),
+    (r'\bsocial\b|\beconom(ics|y)\b|\bhumanit\w*\b|\barts?\b', 'Arts & Social Sciences'),
+    (r'\bscience\b|\bmath(ematics)?\b|\bphysics\b|\bchemistry\b|\bbiology\b', 'Science'),
+]
+
+def classify_to_five_groups(text: str):
+    """根据院系名称匹配五大类"""
+    t = str(text).lower()
+    for pat, label in patterns:
+        if re.search(pat, t, flags=re.IGNORECASE):
+            return label
+    return None
+
+# 生成分组列
+if "school_group" not in df.columns:
+    if "school" in df.columns:
+        df["school_group"] = df["school"].apply(classify_to_five_groups)
+    else:
+        df["school_group"] = df["field"].apply(classify_to_five_groups)
+
+# 剔除无法对比的学科
+exclude_keys = ["medicine", "dentistry", "design", "environment"]
+df = df[~df.apply(lambda r: any(k in str(r.get("school", r.get("field", ""))).lower() for k in exclude_keys), axis=1)]
+
+# 工资列优先使用 basic
+salary_col = "basic_monthly_median" 
+
+####################################################################################
 
 # Sidebar
 st.sidebar.title("🎓 Analysis Settings")
@@ -394,7 +429,135 @@ elif metric == "Employment Stability":
     )
     fig4.update_layout(xaxis_tickformat=".0%")
     st.plotly_chart(fig4, use_container_width=True)
+# ========== ✅ 新增页面：Five Field Groups（精简版：仅箱线图） ==========
+elif metric == "Five Field Groups":
+    st.header("🏷️ Five Field Groups")
 
+    # —— 本页独立筛选（不沿用主侧栏的 field） ——
+    with st.container():
+        c1, c2 = st.columns([1.2, 1.2])
+        with c1:
+            view_choice = st.radio(
+                "Choose Metric ",
+                ("Employment Rate", "Salary Level"),
+                horizontal=True
+            )
+        with c2:
+            groups_selected = st.multiselect(
+                "Choose Groups（默认全选）",
+                options=five_groups,
+                default=five_groups
+            )
+
+    metric_col = (
+        "employment_rate_overall"
+        if view_choice == "Employment Rate"
+        else salary_col
+    )
+
+    if view_choice == "Employment Rate":
+        y_label = "Employment Rate"
+    else:
+        y_label = "Basic Monthly Median (SGD)"
+
+
+    # 仅用“年份 + 大学”过滤；不按 field 过滤，改用本页分组
+    base = (
+        df[
+            df["year"].between(selected_years[0], selected_years[1])
+            & df["university"].isin(universities)
+            & df["school_group"].isin(groups_selected)
+        ]
+        .dropna(subset=["school_group", "university", metric_col])
+    )
+
+    if base.empty:
+        st.info("There is no data available for the current filter. Please adjust the year or university.")
+        st.stop()
+
+    st.markdown("---")
+    st.subheader(f"{view_choice} by University")
+    st.caption("说明：每个分组面板展示该分组内各大学的分布（箱线：Q1~Q3，线：中位数，点：离群值）。")
+
+    # —— 每个分组一张小面板：箱线图（大学为类别，纵轴为所选指标） ——
+    cols = st.columns(2)
+    idx = 0
+    for grp in groups_selected:
+        d = base.loc[base["school_group"] == grp, ["university", "year", metric_col]].copy()
+        if d.empty:
+            continue
+
+        # 根据“各大学的中位数”排序横轴，读图更直观
+        univ= {
+            "National University of Singapore": "NUS",
+            "Nanyang Technological University": "NTU",
+            "Singapore Management University": "SMU",
+            "Singapore University of Social Sciences": "SUSS",
+        }
+        d["university_univ"] = d["university"].replace(univ)
+
+        order = (
+            d.groupby("university_univ")[metric_col]
+            .median()
+            .sort_values(ascending=False)
+            .index.tolist()
+        )
+
+        fig = px.box(
+            d,
+            x="university_univ",
+            y=metric_col,
+            points="outliers",  # 显示离群点；如不需要可改为 False
+            category_orders={"university_univ": order},
+            title=f"{grp} — {y_label} by University",
+            labels={"university_univ": "University", metric_col: y_label},
+            hover_data=["year"]
+        )
+
+        if view_choice == "Employment Rate":           
+            fig.update_layout(yaxis_tickformat=".0%")
+        else:
+            fig.update_yaxes(tickprefix="$", separatethousands=True)
+
+        fig.update_layout(height=460, margin=dict(l=10, r=10, t=60, b=10))
+
+        with cols[idx % 2]:
+            st.plotly_chart(fig, use_container_width=True)
+        idx += 1
+    # ======= B. Summary Table: Highest-performing Universities per Group =======
+    st.markdown("---")
+    st.subheader(f"Summary: Top Universities by {view_choice}")
+    summary = (
+    base.groupby(["school_group", "university"], as_index=False)[metric_col]
+        .mean()
+        .sort_values(["school_group", metric_col], ascending=[True, False])
+    )
+
+    # 每个组取最高的学校
+    top_summary = summary.groupby("school_group").head(1).copy()
+
+    # 格式化数值显示
+    if view_choice == "Employment Rate":
+        top_summary[metric_col] = top_summary[metric_col].apply(lambda x: f"{x:.1%}")
+    else:
+        top_summary[metric_col] = top_summary[metric_col].apply(lambda x: f"${x:,.0f}")
+
+    # 列名友好化
+    top_summary = top_summary.rename(columns={
+        "school_group": "Group",
+        "university": "Top University",
+        metric_col: view_choice
+    })
+    top_summary = top_summary.reset_index(drop=True)
+    top_summary.index = top_summary.index + 1
+
+    # 展示表格
+    st.dataframe(
+        top_summary,
+        use_container_width=True,
+        height=min(400, 80 + 30 * len(top_summary))
+    )
+#####################################################################################
 else:  # Comprehensive Comparison
     st.header("🔍 Comprehensive Comparison Analysis")
     
