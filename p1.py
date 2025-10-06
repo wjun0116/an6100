@@ -88,7 +88,10 @@ universities = st.sidebar.multiselect(
 # Metric selection
 metric = st.sidebar.selectbox(
     "Select Analysis Metric",
-    options=["Employment Rate", "Salary Level", "Employment Stability", "Comprehensive Comparison"]
+    options=["Employment Rate", 
+             "Salary Level", 
+             "Employment Stability", 
+             "Comprehensive Comparison"]
 )
 
 # Filter data based on selections
