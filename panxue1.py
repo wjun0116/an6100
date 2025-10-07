@@ -27,7 +27,7 @@ st.markdown('<style>div.block-container{padding-top:1rem;}</style>', unsafe_allo
 @st.cache_data
 def load_data():
     # Load data from your specific file path
-    file_path = "/Users/panpan/Desktop/6100_Project/data_universities.xlsx"
+    file_path = "data_universities.xlsx"
     
     try:
         # Read the Excel file
