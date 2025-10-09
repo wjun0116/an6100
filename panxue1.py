@@ -159,46 +159,6 @@ st.sidebar.write(f"Years: {df['year'].min()} - {df['year'].max()}")
 st.sidebar.write(f"Fields: {len(available_fields)}")
 st.sidebar.write(f"Universities: {len(available_universities)}")
 
-# Key metrics cards
-col1, col2, col3, col4 = st.columns(4)
-
-with col1:
-    avg_employment = filtered_df['employment_rate_overall'].mean()
-    st.metric(
-        "Average Employment Rate", 
-        f"{avg_employment:.1%}",
-        delta=f"{(avg_employment - df['employment_rate_overall'].mean()):.2%}" if len(filtered_df) > 0 else "0%"
-    )
-
-with col2:
-    avg_salary = filtered_df['gross_monthly_median'].mean()
-    st.metric(
-        "Median Monthly Salary", 
-        f"${avg_salary:,.0f}" if not pd.isna(avg_salary) else "N/A",
-        delta=f"${avg_salary - df['gross_monthly_median'].mean():.0f}" if len(filtered_df) > 0 and not pd.isna(avg_salary) else "0"
-    )
-
-with col3:
-    ft_employment = filtered_df['employment_rate_ft_perm'].mean()
-    st.metric(
-        "Full-time Employment Rate", 
-        f"{ft_employment:.1%}" if not pd.isna(ft_employment) else "N/A",
-        delta=f"{(ft_employment - df['employment_rate_ft_perm'].mean()):.2%}" if len(filtered_df) > 0 and not pd.isna(ft_employment) else "0%"
-    )
-
-with col4:
-    if len(filtered_df) > 0:
-        salary_gap = filtered_df['gross_mthly_75_percentile'].mean() - filtered_df['gross_mthly_25_percentile'].mean()
-        st.metric(
-            "Salary Range", 
-            f"${salary_gap:,.0f}" if not pd.isna(salary_gap) else "N/A",
-            delta="Salary distribution range"
-        )
-    else:
-        st.metric("Salary Range", "N/A")
-
-st.markdown("---")
-
 # Check if filtered data is available
 if len(filtered_df) == 0:
     st.warning("No data available for the selected filters. Please adjust your selection.")
